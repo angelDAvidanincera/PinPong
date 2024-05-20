@@ -1,0 +1,104 @@
+package com.example.pinpong;
+
+import javafx.animation.AnimationTimer;
+import javafx.application.Application;
+import javafx.application.Platform;
+import javafx.scene.Parent;
+import javafx.scene.Scene;
+import javafx.scene.canvas.Canvas;
+import javafx.scene.canvas.GraphicsContext;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
+import javafx.scene.paint.Color;
+import javafx.stage.Stage;
+
+import java.io.*;
+import java.net.Socket;
+
+public class Jugador extends Application {
+    private static final String SERVER_ADDRESS = "localhost";
+    private static final int SERVER_PORT = 12345;
+    private Socket socket;
+    private PrintWriter out;
+    private BufferedReader in;
+    private double paddleY = 250;
+    private double ballX = 400, ballY = 300;
+    private boolean isPlayer1 = true;
+
+    @Override
+    public void start(Stage stage) {
+        Canvas canvas = new Canvas(800, 600);
+        GraphicsContext gc = canvas.getGraphicsContext2D();
+
+        Scene scene = new Scene((Parent) canvas.getParent());
+        stage.setTitle("PinPong");
+        stage.setScene(scene);
+        stage.show();
+
+        scene.setOnKeyPressed(this::handleKeyPress);
+
+        try {
+            socket = new Socket(SERVER_ADDRESS, SERVER_PORT);
+            out = new PrintWriter(socket.getOutputStream(), true);
+            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+
+            new Thread(this::listenToServer).start();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        new AnimationTimer() {
+            public void handle(long currentNanoTime) {
+                drawGame(gc);
+            }
+        }.start();
+    }
+
+    private void handleKeyPress(KeyEvent event) {
+        if (event.getCode() == KeyCode.UP && paddleY > 0) {
+            paddleY -= 10;
+            sendUpdateToServer();
+        } else if (event.getCode() == KeyCode.DOWN && paddleY < 500) {
+            paddleY += 10;
+            sendUpdateToServer();
+        }
+    }
+
+    private void sendUpdateToServer() {
+        out.println(paddleY);
+    }
+
+    private void listenToServer() {
+        try {
+            String message;
+            while ((message = in.readLine()) != null) {
+                double opponentPaddleY = Double.parseDouble(message);
+                if (isPlayer1) {
+                    ballX = 780;
+                } else {
+                    ballX = 20;
+                }
+                Platform.runLater(() -> {
+                    paddleY = opponentPaddleY;
+                });
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void drawGame(GraphicsContext gc) {
+        gc.setFill(Color.BLACK);
+        gc.fillRect(0, 0, 800, 600);
+
+        gc.setFill(Color.WHITE);
+        gc.fillRect(isPlayer1 ? 780 : 10, paddleY, 10, 100);
+
+        gc.setFill(Color.WHITE);
+        gc.fillOval(ballX, ballY, 20, 20);
+    }
+
+    public static void launchJugador(String[] args) {
+        launch(args);
+    }
+}
